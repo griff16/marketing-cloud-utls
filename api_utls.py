@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # ref source: https://medium.com/swlh/how-to-import-data-to-salesforce-marketing-cloud-exacttarget-using-python-rest-api-1302a26f89c0
 
 import json
@@ -33,8 +34,7 @@ class Model:
         response = requests.post(self.base_url + endpoint, data=payload).json()
 
         if 'access_token' not in response:  # throw error if request is unsuccessful
-            raise Exception(
-                f'Unable to validate (ClientID/ClientSecret): {repr(response)}')
+            raise Exception(f"Unable to validate (ClientID/ClientSecret): {repr(response)}")
 
         access_token = response['access_token']
         expires_in = time() + response['expires_in']
@@ -106,11 +106,15 @@ def main():
     data = [
         {
             'id': 'api_test_python_001',
-            'email': 'help@example.com',
+            'email': 'help_change@example.com',
         },
         {
             'id': 'api_test_python_002',
             'email': 'help2@example.com',
+        },
+        {
+            'id': 'api_test_python_003',
+            'email': 'help3@example.com',
         }
     ]
 
