@@ -12,13 +12,11 @@ from math import floor
 class Model:
 
     # consturctor
-    def __init__(self):
-        # ========= 変更箇所 ==========
-        self.et_client_id = 'vzwdmunxldim9v323qn8qk8o'
-        self.et_client_secret = '2nbzYMVs72nRvanqmUmKIjWl'
-        self.et_subdomain = 'mc92gszf616ms75bpfrsqfr84m01'
-        self.et_mid = '518001268'
-        # ========= 変更箇所 ==========
+    def __init__(self, client_id, client_secret, subdomain, mid):
+        self.et_client_id = client_id
+        self.et_client_secret = client_secret
+        self.et_subdomain = subdomain
+        self.et_mid = mid
         self.base_url = 'https://' + self.et_subdomain
 
 
@@ -34,7 +32,8 @@ class Model:
         response = requests.post(self.base_url + endpoint, data=payload).json()
 
         if 'access_token' not in response:  # throw error if request is unsuccessful
-            raise Exception(f"Unable to validate (ClientID/ClientSecret): {repr(response)}")
+            raise Exception(
+                f"Unable to validate (ClientID/ClientSecret): {repr(response)}")
 
         access_token = response['access_token']
         expires_in = time() + response['expires_in']
@@ -51,15 +50,15 @@ class Model:
         }
         headers = {'authorization': f'Bearer {token}'}
 
-        response = requests.post(
-            self.base_url + endpoint, data=payload, headers=headers).json()
+        response = requests.post(self.base_url + endpoint, data=payload, headers=headers).json()
 
         return f"The email [{response['email']}] is valid" if response['valid'] \
             else f"The validity of email [{response['email']}] is {str(response['valid'])} becuase of {response['failedValidation']}"
 
 
     # upsert data to DE (https://developer.salesforce.com/docs/atlas.en-us.noversion.mc-apis.meta/mc-apis/updateDataExtensionIDAsync.htm)
-    def insert_data(self, access_token, expires_in, de_externalkey, data):
+    # requires the DE to have primary key
+    def upsert_data(self, access_token, expires_in, de_externalkey, data):
         endpoint = f'.rest.marketingcloudapis.com/data/v1/async/dataextensions/key:{de_externalkey}/rows'
         headers = {'authorization': f'Bearer {access_token}'}
         batch_size = self.get_batch_size(data[0])
@@ -68,23 +67,35 @@ class Model:
             if expires_in < time() + 60:
                 expires_in, access_token = self.request_token()
 
-            batch_data = data[batch : batch + batch_size]
+            batch_data = data[batch: batch + batch_size]
             insert_request = requests.post(
                 url=self.base_url + endpoint,
-                data=json.dumps({'items': batch_data}, default=self.datetime_converter),
+                data=json.dumps({'items': batch_data},
+                                default=self.datetime_converter),
                 headers=headers
             )
 
         if insert_request.status_code not in (200, 202):
-            raise Exception(f'Insertion failed with message: {insert_request.json()}')
-            insert_request.close()
+            raise Exception(
+                f'Insertion failed with message: {insert_request.json()}')
 
-        return 'complete'
+        return True
 
 
-    def create_data(self, base_id, base_email, size):
-        pass
+    # create [de_size] of {id: baseid_i, email: help+i@example.com} data points
+    def create_data(self, base_id, base_email, de_size):
+        data = []
+        username, domain = base_email.split('@')
 
+        for i in range(0, de_size):
+            temp_data = {
+                'id': f'{base_id}_{i + 1}',
+                'email': f'{username}+{i + 1}@{domain}'
+            }
+
+            data.append(temp_data)
+
+        return data
 
     # helper function
     def datetime_converter(self, value: datetime):
@@ -97,28 +108,66 @@ class Model:
         return floor(4000 / (sys.getsizeof(batch) / 1024))
 
 
+# parse parameters
+def parse_param():
+    try:
+        client_id, client_secret, subdomain, mid  = input('Enter client_id, client_secret, subdomain, mid in order seperated by commas\n').split(',')
+        client_id, client_secret, subdomain, mid = client_id.strip(), client_secret.strip(), subdomain.strip(), mid.strip()
+    except Exception:
+        print(f'\nsomething went wrong')
+        return False, None
+
+    return True, [client_id, client_secret, subdomain, mid]
+    
+
 # main function
 def main():
-    m = Model()
+    
+    list = None
+    while (True):
+        result, list = parse_param()
+        if (result):
+            break
+        print('Enter again\n')
+
+    print(f'\nclient_id: {list[0]}')
+    print(f'client_secret: {list[1]}')
+    print(f'subdomain: {list[2]}')
+    print(f'mid: {list[3]}')
+    print('loading...') 
+
+
+    m = Model(client_id=list[0], client_secret=list[1], subdomain=list[2], mid=list[3])
     access_token, expires_in = m.request_token()
-    # result = m.email_validate(access_token, target_email='x.zhang@salesforce.com')
+    
+    while(True):
+        try:
+            print('\nPlease enter one of the following commands')
+            inp = input(
+                "\t1: Email Validation (e.g. 1, help@example.com)\n" + 
+                "\t2: Upsert Data Points (e.g. 2, external_key, base_id, help@example.com, 10)\n" + 
+                "\tq: Exit\n").split(',')
 
-    data = [
-        {
-            'id': 'api_test_python_001',
-            'email': 'help_change@example.com',
-        },
-        {
-            'id': 'api_test_python_002',
-            'email': 'help2@example.com',
-        },
-        {
-            'id': 'api_test_python_003',
-            'email': 'help3@example.com',
-        }
-    ]
-
-    print(m.insert_data(access_token, expires_in, de_externalkey='FA8001D6-53D7-442A-A205-80F8E937441E', data=data))
+            cmd = inp[0].strip()
+            if (cmd == '1'):
+                result = m.email_validate(access_token, target_email=inp[1].strip())
+                print('Result: ' + result)
+                
+            elif (cmd == '2'):
+                data = m.create_data(base_id=inp[2].strip(), base_email=inp[3].strip(), de_size=int(inp[4].strip()))
+                m.upsert_data(access_token, expires_in, de_externalkey=inp[1].strip(), data=data)
+                print('Upsert Completed')
+            
+            elif (cmd == 'q'):
+                print('The program has ended')
+                break
+            
+            else:
+                print('unrecognized command. retype the command\n')
+        
+        except Exception as e:
+            print(e)    
+            print(f'\nsomething went wrong')
 
 
 # entry point
