@@ -42,13 +42,14 @@ class Model:
 
 
     # validate email (https://developer.salesforce.com/docs/atlas.en-us.noversion.mc-apis.meta/mc-apis/validateEmail.htm)
-    def email_validate(self, token, target_email):
+    def email_validate(self, target_email):
+        access_token, expires_in = self.request_token()
         endpoint = '.rest.marketingcloudapis.com/address/v1/validateEmail'
         payload = {
             "email": target_email,
             "validators": ["SyntaxValidator", "MXValidator", "ListDetectiveValidator"]
         }
-        headers = {'authorization': f'Bearer {token}'}
+        headers = {'authorization': f'Bearer {access_token}'}
 
         response = requests.post(self.base_url + endpoint, data=payload, headers=headers).json()
 
@@ -58,7 +59,8 @@ class Model:
 
     # upsert data to DE (https://developer.salesforce.com/docs/atlas.en-us.noversion.mc-apis.meta/mc-apis/updateDataExtensionIDAsync.htm)
     # requires the DE to have primary key
-    def upsert_data(self, access_token, expires_in, de_externalkey, data):
+    def upsert_data(self, de_externalkey, data):
+        access_token, expires_in = self.request_token()
         endpoint = f'.rest.marketingcloudapis.com/data/v1/async/dataextensions/key:{de_externalkey}/rows'
         headers = {'authorization': f'Bearer {access_token}'}
         batch_size = self.get_batch_size(data[0])
@@ -68,7 +70,7 @@ class Model:
                 expires_in, access_token = self.request_token()
 
             batch_data = data[batch: batch + batch_size]
-            insert_request = requests.post(
+            insert_request = requests.put(
                 url=self.base_url + endpoint,
                 data=json.dumps({'items': batch_data},
                                 default=self.datetime_converter),
@@ -136,10 +138,7 @@ def main():
     print(f'mid: {list[3]}')
     print('loading...') 
 
-
     m = Model(client_id=list[0], client_secret=list[1], subdomain=list[2], mid=list[3])
-    access_token, expires_in = m.request_token()
-    
     while(True):
         try:
             print('\nPlease enter one of the following commands')
@@ -150,12 +149,12 @@ def main():
 
             cmd = inp[0].strip()
             if (cmd == '1'):
-                result = m.email_validate(access_token, target_email=inp[1].strip())
+                result = m.email_validate(target_email=inp[1].strip())
                 print('Result: ' + result)
                 
             elif (cmd == '2'):
                 data = m.create_data(base_id=inp[2].strip(), base_email=inp[3].strip(), de_size=int(inp[4].strip()))
-                m.upsert_data(access_token, expires_in, de_externalkey=inp[1].strip(), data=data)
+                m.upsert_data(de_externalkey=inp[1].strip(), data=data)
                 print('Upsert Completed')
             
             elif (cmd == 'q'):
